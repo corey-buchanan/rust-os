@@ -179,3 +179,14 @@ fn test_println_many() {
         println!("I will not drop a double decker in the toilet...");
     }
 }
+
+#[test_case]
+fn test_println_output() {
+    let s = "Rustoleum";
+    println!("{}", s);
+
+    for (i, c) in s.chars().enumerate() {
+        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
+        assert_eq!(c, char::from(screen_char.ascii_character));
+    }
+}
