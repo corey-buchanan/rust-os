@@ -4,18 +4,19 @@
 #![test_runner(rust_os::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-mod vga_buffer;
-mod serial;
-
-use vga_buffer::Color;
 use core::panic::PanicInfo;
+use rust_os::{vga_buffer, hlt_loop};
 
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    use rust_os::text_color;
+    use vga_buffer::Color;
+
+    // TODO - update to println_color! macro when it works with bg color
     text_color!(Color::White, Color::Red);
-    println!("{}", info);
-    loop {}
+    rust_os::println!("{}", info);
+    hlt_loop();
 }
 
 #[cfg(test)]
@@ -26,18 +27,14 @@ fn panic(info: &PanicInfo) -> ! {
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    println!("Hello!");
-    text_color!(Color::Green);
-    println!("We've been trying to reach you about...");
-    text_color!(Color::Red, Color::Yellow);
-    print!("...YOUR CAR'S EXTENDED WARRANTY!");
-    text_color!();
-    println!();
+    rust_os::init();
 
+    rust_os::println_color!(vga_buffer::Color::Cyan, "Lets goooo!!!!");
+    
     #[cfg(test)]
     test_main();
 
-    loop {}
+    hlt_loop();
 }
 
 // Tests proper output for successful tests

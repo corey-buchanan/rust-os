@@ -1,5 +1,7 @@
 use volatile::Volatile;
+use x86_64::instructions::interrupts;
 use core::fmt;
+use core::fmt::Write;
 use lazy_static::lazy_static;
 use spin::Mutex;
 
@@ -79,6 +81,7 @@ impl Writer {
             b'\n' => {
                 self.new_line();
             }
+
             byte => {
                 if self.column_position >= BUFFER_WIDTH {
                     self.new_line();
@@ -128,6 +131,20 @@ impl fmt::Write for Writer {
 }
 
 #[macro_export]
+macro_rules! print_color {
+    ($fg:expr, $($arg:tt)*) => ($crate::vga_buffer::_print_color($fg, $crate::vga_buffer::Color::Black, format_args!($($arg)*)));
+    // TODO - fix, possibly consolidate with print! macro
+    // ($fg:expr, $bg:expr, $($arg:tt)*) => ($crate::vga_buffer::_print_color($fg, $bg, format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! println_color {
+    ($fg:expr, $($arg:tt)*) => ($crate::print_color!($fg, "{}\n", format_args!($($arg)*)));
+    // TODO - fix, possibly consolidate with println! macro
+    // ($fg:expr, $bg:expr, $($arg:tt)*) => ($crate::print_color!($fg, $bg, "{}\n", format_args!($($arg)*)));
+}
+
+#[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
 }
@@ -140,8 +157,22 @@ macro_rules! println {
 
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
-    use core::fmt::Write;
-    WRITER.lock().write_fmt(args).unwrap();
+    interrupts::without_interrupts(|| {
+        WRITER.lock().write_fmt(args).unwrap();
+    })
+}
+
+#[doc(hidden)]
+pub fn _print_color(foreground: Color, background: Color, args: fmt::Arguments) {
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+
+        let restore_color = writer.color_code;
+
+        writer.color_code = ColorCode::new(foreground, background);
+        writer.write_fmt(args).unwrap();
+        writer.color_code = restore_color;
+    })
 }
 
 #[macro_export]
@@ -153,7 +184,9 @@ macro_rules! text_color {
 
 #[doc(hidden)]
 pub fn _set_color(foreground: Color, background: Color) {
-    WRITER.lock().color_code = ColorCode::new(foreground, background);
+    interrupts::without_interrupts(|| {
+        WRITER.lock().color_code = ColorCode::new(foreground, background);
+    })
 }
 
 #[test_case]
@@ -182,11 +215,18 @@ fn test_println_many() {
 
 #[test_case]
 fn test_println_output() {
-    let s = "Rustoleum";
-    println!("{}", s);
+    use core::fmt::Write;
+    use x86_64::instructions::interrupts;
 
-    for (i, c) in s.chars().enumerate() {
-        let screen_char = WRITER.lock().buffer.chars[BUFFER_HEIGHT - 2][i].read();
-        assert_eq!(c, char::from(screen_char.ascii_character));
-    }
+    let s = "Rustoleum";
+
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+        writeln!(writer, "\n{}", s).expect("writeln failed");
+
+        for (i, c) in s.chars().enumerate() {
+            let screen_char = writer.buffer.chars[BUFFER_HEIGHT - 2][i].read();
+            assert_eq!(c, char::from(screen_char.ascii_character));
+        }
+    })
 }
