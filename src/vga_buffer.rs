@@ -121,6 +121,21 @@ impl Writer {
             self.buffer.chars[row][col].write(blank);
         }
     }
+
+    fn backspace(&mut self) {
+        if self.column_position > 0 {
+            let blank = ScreenChar {
+                ascii_character: b' ',
+                color_code: self.color_code,
+            };
+
+            self.column_position -= 1;
+
+            let row = BUFFER_HEIGHT - 1;
+            let col = self.column_position;
+            self.buffer.chars[row][col].write(blank);
+        }
+    }
 }
 
 impl fmt::Write for Writer {
@@ -128,6 +143,18 @@ impl fmt::Write for Writer {
         self.write_string(s);
         Ok(())
     }
+}
+
+#[macro_export]
+macro_rules! backspace {
+    () => ($crate::vga_buffer::_backspace());
+}
+
+#[doc(hidden)]
+pub fn _backspace() {
+    interrupts::without_interrupts(|| {
+        WRITER.lock().backspace();
+    })
 }
 
 #[macro_export]
